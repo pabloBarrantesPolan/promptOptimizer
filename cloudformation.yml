@@ -91,14 +91,14 @@ Resources:
             #!/bin/bash
             set -eux
             apt-get update
-            apt-get install -y docker.io docker-compose-plugin git
+            apt-get install -y docker.io docker-compose git
             usermod -aG docker ubuntu
             systemctl enable --now docker
             cd /home/ubuntu
             rm -rf app
             git clone --branch ${RepoBranch} ${RepoUrl} app
             cd app
-            docker compose up -d --build
+            docker-compose up -d --build
 
 Outputs:
   InstancePublicIP:
