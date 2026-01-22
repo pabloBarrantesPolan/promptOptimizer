@@ -1,0 +1,109 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: EC2 + Docker para rodar o Prompt Optimizer.
+
+Parameters:
+  KeyName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Nome do Key Pair para acesso via SSH.
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    AllowedValues:
+      - t2.micro
+      - t3.micro
+      - t3.small
+      - t3.medium
+    Description: Tipo da instancia EC2.
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC onde a instancia sera criada.
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet publica para a instancia.
+  RepoUrl:
+    Type: String
+    Description: URL git do repositorio.
+  RepoBranch:
+    Type: String
+    Default: main
+    Description: Branch a ser usada no deploy.
+  AppPort:
+    Type: Number
+    Default: 5173
+    Description: Porta exposta pela aplicacao.
+  SSHCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: CIDR permitido para SSH (porta 22).
+  AppCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: CIDR permitido para acessar a aplicacao.
+
+Resources:
+  AppSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Acesso SSH e aplicacao
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref SSHCidr
+        - IpProtocol: tcp
+          FromPort: !Ref AppPort
+          ToPort: !Ref AppPort
+          CidrIp: !Ref AppCidr
+
+  AppRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  AppInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref AppRole
+
+  AppInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyName
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds:
+        - !Ref AppSecurityGroup
+      IamInstanceProfile: !Ref AppInstanceProfile
+      ImageId: !Sub "{{resolve:ssm:/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id}}"
+      UserData:
+        Fn::Base64:
+          !Sub |
+            #!/bin/bash
+            set -eux
+            apt-get update
+            apt-get install -y docker.io docker-compose-plugin git
+            usermod -aG docker ubuntu
+            systemctl enable --now docker
+            cd /home/ubuntu
+            rm -rf app
+            git clone --branch ${RepoBranch} ${RepoUrl} app
+            cd app
+            docker compose up -d --build
+
+Outputs:
+  InstancePublicIP:
+    Description: IP publico da instancia
+    Value: !GetAtt AppInstance.PublicIp
+  AppURL:
+    Description: URL da aplicacao
+    Value: !Sub "http://${AppInstance.PublicIp}:${AppPort}"
