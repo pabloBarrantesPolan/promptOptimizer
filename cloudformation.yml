@@ -29,7 +29,7 @@ Parameters:
     Description: Branch a ser usada no deploy.
   AppPort:
     Type: Number
-    Default: 5173
+    Default: 80
     Description: Porta exposta pela aplicacao.
   SSHCidr:
     Type: String
