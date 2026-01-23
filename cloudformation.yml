@@ -45,6 +45,17 @@ Parameters:
     Description: CIDR permitido para acessar a aplicacao.
 
 Resources:
+  AppEip:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  AppEipAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt AppEip.AllocationId
+      InstanceId: !Ref AppInstance
+
   AppSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -136,8 +147,11 @@ Resources:
 
 Outputs:
   InstancePublicIP:
-    Description: IP publico da instancia
-    Value: !GetAtt AppInstance.PublicIp
+    Description: IP publico estatico (Elastic IP)
+    Value: !Ref AppEip
+  InstancePublicDNS:
+    Description: DNS publico da instancia
+    Value: !GetAtt AppInstance.PublicDnsName
   AppURL:
     Description: URL da aplicacao
-    Value: !Sub "http://${AppInstance.PublicIp}:${AppPort}"
+    Value: !Sub "http://${AppEip}:${AppPort}"
