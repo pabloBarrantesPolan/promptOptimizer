@@ -181,6 +181,7 @@ const App = () => {
   const [answers, setAnswers] = useState({});
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [copiedOriginal, setCopiedOriginal] = useState(false);
   const endRef = useRef(null);
 
   useEffect(() => {
@@ -202,10 +203,12 @@ const App = () => {
     setAnswers({});
     setCurrentQuestionIndex(0);
     setCopied(false);
+    setCopiedOriginal(false);
   };
 
   const optimizedPrompt =
     stage === "done" ? buildOptimizedPrompt(initialPrompt, answers) : "";
+  const originalPrompt = stage === "done" ? initialPrompt : "";
 
   const handleCopyPrompt = async () => {
     if (!optimizedPrompt) return;
@@ -215,6 +218,17 @@ const App = () => {
       setTimeout(() => setCopied(false), 2000);
     } catch (error) {
       setCopied(false);
+    }
+  };
+
+  const handleCopyOriginalPrompt = async () => {
+    if (!originalPrompt) return;
+    try {
+      await navigator.clipboard.writeText(originalPrompt);
+      setCopiedOriginal(true);
+      setTimeout(() => setCopiedOriginal(false), 2000);
+    } catch (error) {
+      setCopiedOriginal(false);
     }
   };
 
@@ -350,30 +364,67 @@ const App = () => {
 
       {stage === "done" ? (
         <section className="prompt-output" aria-live="polite">
-          <div className="prompt-header">
-            <h2>Prompt otimizado</h2>
-            <button type="button" className="secondary" onClick={handleCopyPrompt}>
-              {copied ? "Copiado!" : "Copiar"}
-            </button>
+          <div className="prompt-panels">
+            <div className="prompt-panel">
+              <div className="prompt-header">
+                <h2>Prompt inicial</h2>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={handleCopyOriginalPrompt}
+                >
+                  {copiedOriginal ? "Copiado!" : "Copiar"}
+                </button>
+              </div>
+              <div className="prompt-box">
+                <pre>{originalPrompt}</pre>
+              </div>
+              <p className="prompt-hint">
+                Use este prompt para comparar os resultados.
+              </p>
+            </div>
+
+            <div className="prompt-panel">
+              <div className="prompt-header">
+                <h2>Prompt otimizado</h2>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={handleCopyPrompt}
+                >
+                  {copied ? "Copiado!" : "Copiar"}
+                </button>
+              </div>
+              <div className="prompt-box">
+                <pre>{optimizedPrompt}</pre>
+              </div>
+              <p className="prompt-hint">
+                Você pode ajustar qualquer detalhe e copiar novamente.
+              </p>
+            </div>
           </div>
-          <div className="prompt-box">
-            <pre>{optimizedPrompt}</pre>
-          </div>
-          <p className="prompt-hint">
-            Você pode ajustar qualquer detalhe e copiar novamente.
-          </p>
         </section>
       ) : null}
 
       <form className="composer" onSubmit={handleSubmit}>
         <input
           type="text"
-          placeholder="Digite aqui..."
+          placeholder={
+            stage === "done"
+              ? "Clique em reiniciar para iniciar um novo prompt."
+              : "Digite aqui..."
+          }
           value={input}
           onChange={(event) => setInput(event.target.value)}
           aria-label="Mensagem"
+          disabled={stage === "done"}
         />
-        <button type="submit">Enviar</button>
+        {stage === "done" ? (
+          <button type="button" className="secondary" onClick={handleReset}>
+            Reiniciar
+          </button>
+        ) : null}
+        {stage !== "done" ? <button type="submit">Enviar</button> : null}
         {stage === "questioning" && currentQuestionIndex > 0 ? (
           <button type="button" className="secondary" onClick={handleSkip}>
             Pular

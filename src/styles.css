@@ -159,6 +159,17 @@ a:hover {
   gap: 12px;
 }
 
+.prompt-panels {
+  display: grid;
+  gap: 16px;
+}
+
+.prompt-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .prompt-header {
   display: flex;
   align-items: center;
@@ -217,5 +228,11 @@ a:hover {
 
   .bubble {
     max-width: 100%;
+  }
+}
+
+@media (min-width: 900px) {
+  .prompt-panels {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
