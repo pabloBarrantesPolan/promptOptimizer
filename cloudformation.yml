@@ -31,6 +31,10 @@ Parameters:
     Type: Number
     Default: 80
     Description: Porta exposta pela aplicacao.
+  DataVolumeSize:
+    Type: Number
+    Default: 8
+    Description: Tamanho do volume EBS para armazenar dados (GiB).
   SSHCidr:
     Type: String
     Default: 0.0.0.0/0
@@ -94,11 +98,41 @@ Resources:
             apt-get install -y docker.io docker-compose git
             usermod -aG docker ubuntu
             systemctl enable --now docker
+            DATA_DEVICE=/dev/xvdf
+            if [ -b /dev/nvme1n1 ]; then
+              DATA_DEVICE=/dev/nvme1n1
+            fi
+            for i in $(seq 1 10); do
+              if [ -b "$DATA_DEVICE" ]; then
+                break
+              fi
+              sleep 3
+            done
+            if ! file -s "$DATA_DEVICE" | grep -q ext4; then
+              mkfs -t ext4 "$DATA_DEVICE"
+            fi
+            mkdir -p /data
+            mount "$DATA_DEVICE" /data
+            echo "$DATA_DEVICE /data ext4 defaults,nofail 0 2" >> /etc/fstab
             cd /home/ubuntu
             rm -rf app
             git clone --branch ${RepoBranch} ${RepoUrl} app
             cd app
             docker-compose up -d --build
+
+  AppDataVolume:
+    Type: AWS::EC2::Volume
+    Properties:
+      AvailabilityZone: !GetAtt AppInstance.AvailabilityZone
+      Size: !Ref DataVolumeSize
+      VolumeType: gp3
+
+  AppDataAttachment:
+    Type: AWS::EC2::VolumeAttachment
+    Properties:
+      InstanceId: !Ref AppInstance
+      VolumeId: !Ref AppDataVolume
+      Device: /dev/sdf
 
 Outputs:
   InstancePublicIP:

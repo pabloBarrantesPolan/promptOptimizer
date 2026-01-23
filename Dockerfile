@@ -8,10 +8,17 @@ RUN npm install
 COPY . .
 RUN npm run build
 
-FROM nginx:1.27-alpine
+FROM node:20-alpine
 
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/dist /usr/share/nginx/html
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+COPY package.json package-lock.json* ./
+RUN npm install --omit=dev
+
+COPY --from=build /app/dist ./dist
+COPY server.js ./
 
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["npm", "start"]

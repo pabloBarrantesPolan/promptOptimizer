@@ -132,6 +132,29 @@ const FIELD_LABELS = [
   { key: "criteria", label: "Critérios de sucesso" },
 ];
 
+const SURVEY_QUESTIONS = [
+  {
+    id: "clarity",
+    text:
+      "Comparando o prompt otimizado com o prompt inicial, a resposta foi mais clara.",
+  },
+  {
+    id: "relevance",
+    text:
+      "Comparando o prompt otimizado com o prompt inicial, a resposta foi mais relevante.",
+  },
+  {
+    id: "contextFit",
+    text:
+      "Comparando o prompt otimizado com o prompt inicial, a resposta ficou mais adequada ao contexto.",
+  },
+  {
+    id: "satisfaction",
+    text:
+      "No geral, fiquei mais satisfeito com o resultado obtido usando o prompt otimizado.",
+  },
+];
+
 const buildOptimizedPrompt = (initialPrompt, answers) => {
   const lines = [];
   lines.push("Você é um assistente especializado em atender a solicitação abaixo.");
@@ -182,6 +205,15 @@ const App = () => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [copied, setCopied] = useState(false);
   const [copiedOriginal, setCopiedOriginal] = useState(false);
+  const [showSurvey, setShowSurvey] = useState(false);
+  const [surveySubmitted, setSurveySubmitted] = useState(false);
+  const [surveyResponses, setSurveyResponses] = useState({});
+  const [surveySaving, setSurveySaving] = useState(false);
+  const [surveyError, setSurveyError] = useState("");
+  const [view, setView] = useState("chat");
+  const [surveyList, setSurveyList] = useState([]);
+  const [surveyLoading, setSurveyLoading] = useState(false);
+  const [surveyListError, setSurveyListError] = useState("");
   const endRef = useRef(null);
 
   useEffect(() => {
@@ -204,6 +236,11 @@ const App = () => {
     setCurrentQuestionIndex(0);
     setCopied(false);
     setCopiedOriginal(false);
+    setShowSurvey(false);
+    setSurveySubmitted(false);
+    setSurveyResponses({});
+    setSurveySaving(false);
+    setSurveyError("");
   };
 
   const optimizedPrompt =
@@ -229,6 +266,94 @@ const App = () => {
       setTimeout(() => setCopiedOriginal(false), 2000);
     } catch (error) {
       setCopiedOriginal(false);
+    }
+  };
+
+  const handleSurveyChange = (questionId, value) => {
+    setSurveyResponses((prev) => ({
+      ...prev,
+      [questionId]: value,
+    }));
+  };
+
+  const loadSurveys = async () => {
+    setSurveyLoading(true);
+    setSurveyListError("");
+    try {
+      const response = await fetch("/api/surveys");
+      if (!response.ok) {
+        throw new Error("Falha ao carregar.");
+      }
+      const data = await response.json();
+      setSurveyList(Array.isArray(data) ? data : []);
+    } catch (error) {
+      setSurveyListError("Não foi possível carregar os formulários.");
+    } finally {
+      setSurveyLoading(false);
+    }
+  };
+
+  const handleSurveySubmit = async (event) => {
+    event.preventDefault();
+    if (surveySubmitted || surveySaving) return;
+    setSurveySaving(true);
+    setSurveyError("");
+    try {
+      const response = await fetch("/api/surveys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          initialPrompt,
+          optimizedPrompt,
+          answers,
+          ratings: surveyResponses,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error("Falha ao salvar.");
+      }
+      setSurveySubmitted(true);
+    } catch (error) {
+      setSurveyError("Não foi possível salvar a avaliação.");
+    } finally {
+      setSurveySaving(false);
+    }
+  };
+
+  const handleDownloadSurvey = async (surveyId) => {
+    setSurveyListError("");
+    try {
+      const response = await fetch(`/api/surveys/${surveyId}/export`);
+      if (!response.ok) {
+        throw new Error("Falha ao baixar.");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `survey-${surveyId}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      await loadSurveys();
+    } catch (error) {
+      setSurveyListError("Não foi possível baixar o formulário.");
+    }
+  };
+
+  const handleDeleteSurvey = async (surveyId) => {
+    setSurveyListError("");
+    try {
+      const response = await fetch(`/api/surveys/${surveyId}`, {
+        method: "DELETE",
+      });
+      if (!response.ok) {
+        throw new Error("Falha ao excluir.");
+      }
+      await loadSurveys();
+    } catch (error) {
+      setSurveyListError("Não foi possível excluir o formulário.");
     }
   };
 
@@ -335,6 +460,25 @@ const App = () => {
           </button>
         </div>
       </header>
+      <nav className="nav">
+        <button
+          type="button"
+          className={view === "chat" ? "nav-button active" : "nav-button"}
+          onClick={() => setView("chat")}
+        >
+          Chat
+        </button>
+        <button
+          type="button"
+          className={view === "admin" ? "nav-button active" : "nav-button"}
+          onClick={() => {
+            setView("admin");
+            loadSurveys();
+          }}
+        >
+          Gestão de formulários
+        </button>
+      </nav>
 
       <section className="info">
         <p>
@@ -353,16 +497,72 @@ const App = () => {
         ) : null}
       </section>
 
-      <main className="chat">
-        {messages.map((message, index) => (
-          <div key={index} className={`message ${message.role}`}>
-            <div className="bubble">{message.content}</div>
+      {view === "chat" ? (
+        <main className="chat">
+          {messages.map((message, index) => (
+            <div key={index} className={`message ${message.role}`}>
+              <div className="bubble">{message.content}</div>
+            </div>
+          ))}
+          <div ref={endRef}></div>
+        </main>
+      ) : (
+        <main className="admin">
+          <div className="admin-header">
+            <div>
+              <h2>Gestão de formulários</h2>
+              <p>Controle de downloads e exclusão de registros.</p>
+            </div>
+            <button type="button" className="secondary" onClick={loadSurveys}>
+              Atualizar
+            </button>
           </div>
-        ))}
-        <div ref={endRef}></div>
-      </main>
+          {surveyLoading ? <p>Carregando formulários...</p> : null}
+          {surveyListError ? <p className="error">{surveyListError}</p> : null}
+          {!surveyLoading && surveyList.length === 0 ? (
+            <p>Nenhum formulário registrado até o momento.</p>
+          ) : null}
+          {surveyList.length > 0 ? (
+            <div className="admin-table">
+              <div className="admin-row header">
+                <span>ID</span>
+                <span>Data</span>
+                <span>Download</span>
+                <span>Ações</span>
+              </div>
+              {surveyList.map((survey) => (
+                <div className="admin-row" key={survey.id}>
+                  <span className="mono">{survey.id.slice(0, 8)}...</span>
+                  <span>
+                    {new Date(survey.createdAt).toLocaleString("pt-BR")}
+                  </span>
+                  <span>
+                    {survey.downloadedAt ? "Baixado" : "Pendente"}
+                  </span>
+                  <span className="admin-actions">
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => handleDownloadSurvey(survey.id)}
+                    >
+                      Baixar
+                    </button>
+                    <button
+                      type="button"
+                      className="danger"
+                      onClick={() => handleDeleteSurvey(survey.id)}
+                    >
+                      Excluir
+                    </button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </main>
+      )}
 
-      {stage === "done" ? (
+      {view === "chat" && stage === "done" ? (
         <section className="prompt-output" aria-live="polite">
           <div className="prompt-panels">
             <div className="prompt-panel">
@@ -403,34 +603,91 @@ const App = () => {
               </p>
             </div>
           </div>
+          <div className="survey-actions">
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => setShowSurvey((prev) => !prev)}
+            >
+              {showSurvey ? "Ocultar formulário" : "Avaliar efetividade"}
+            </button>
+            <span className="survey-note">
+              Escala 1–5: 1 = Discordo totalmente, 5 = Concordo totalmente.
+            </span>
+          </div>
+
+          {showSurvey ? (
+            <form className="survey" onSubmit={handleSurveySubmit}>
+              <h3>Formulário de avaliação (A/B)</h3>
+              <p>
+                Avalie a efetividade do prompt otimizado em comparação ao prompt
+                inicial.
+              </p>
+              {surveyError ? <p className="error">{surveyError}</p> : null}
+              {SURVEY_QUESTIONS.map((question) => (
+                <div className="survey-item" key={question.id}>
+                  <span className="survey-question">{question.text}</span>
+                  <div className="survey-scale">
+                    {[1, 2, 3, 4, 5].map((value) => (
+                      <label key={value}>
+                        <input
+                          type="radio"
+                          name={question.id}
+                          value={value}
+                          checked={surveyResponses[question.id] === String(value)}
+                          onChange={(event) =>
+                            handleSurveyChange(question.id, event.target.value)
+                          }
+                          required
+                          disabled={surveySubmitted}
+                        />
+                        <span>{value}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              <div className="survey-submit">
+                <button type="submit" disabled={surveySubmitted || surveySaving}>
+                  {surveySubmitted
+                    ? "Avaliação enviada"
+                    : surveySaving
+                      ? "Enviando..."
+                      : "Enviar avaliação"}
+                </button>
+              </div>
+            </form>
+          ) : null}
         </section>
       ) : null}
 
-      <form className="composer" onSubmit={handleSubmit}>
-        <input
-          type="text"
-          placeholder={
-            stage === "done"
-              ? "Clique em reiniciar para iniciar um novo prompt."
-              : "Digite aqui..."
-          }
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          aria-label="Mensagem"
-          disabled={stage === "done"}
-        />
-        {stage === "done" ? (
-          <button type="button" className="secondary" onClick={handleReset}>
-            Reiniciar
-          </button>
-        ) : null}
-        {stage !== "done" ? <button type="submit">Enviar</button> : null}
-        {stage === "questioning" && currentQuestionIndex > 0 ? (
-          <button type="button" className="secondary" onClick={handleSkip}>
-            Pular
-          </button>
-        ) : null}
-      </form>
+      {view === "chat" ? (
+        <form className="composer" onSubmit={handleSubmit}>
+          <input
+            type="text"
+            placeholder={
+              stage === "done"
+                ? "Clique em reiniciar para iniciar um novo prompt."
+                : "Digite aqui..."
+            }
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            aria-label="Mensagem"
+            disabled={stage === "done"}
+          />
+          {stage === "done" ? (
+            <button type="button" className="secondary" onClick={handleReset}>
+              Reiniciar
+            </button>
+          ) : null}
+          {stage !== "done" ? <button type="submit">Enviar</button> : null}
+          {stage === "questioning" && currentQuestionIndex > 0 ? (
+            <button type="button" className="secondary" onClick={handleSkip}>
+              Pular
+            </button>
+          ) : null}
+        </form>
+      ) : null}
     </div>
   );
 };
