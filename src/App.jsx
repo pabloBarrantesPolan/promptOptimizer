@@ -167,6 +167,15 @@ const SURVEY_QUESTIONS = [
   },
 ];
 
+const PROFILE_QUESTIONS = [
+  {
+    id: "genAiFamiliarity",
+    text:
+      "De 1 a 5, quanta familiaridade ou conhecimento você tem no uso de ferramentas de IA generativa?",
+    note: "Escala 1–5: 1 = Nenhuma familiaridade, 5 = Muito familiar.",
+  },
+];
+
 const buildOptimizedPrompt = (initialPrompt, answers) => {
   const lines = [];
   lines.push("Você é um assistente especializado em atender a solicitação abaixo.");
@@ -1076,7 +1085,8 @@ const App = () => {
               {showSurvey ? "Ocultar formulário" : "Avaliar efetividade"}
             </button>
             <span className="survey-note">
-              Escala 1–5: 1 = Discordo totalmente, 5 = Concordo totalmente.
+              Escala 1–5. Nas questões de comparação: 1 = Discordo totalmente, 5 =
+              Concordo totalmente.
             </span>
           </div>
 
@@ -1087,7 +1097,37 @@ const App = () => {
                 Avalie a efetividade do prompt otimizado em comparação ao prompt
                 inicial.
               </p>
+              <p className="survey-note">
+                Escala 1–5 nas questões de comparação: 1 = Discordo totalmente, 5 =
+                Concordo totalmente.
+              </p>
               {surveyError ? <p className="error">{surveyError}</p> : null}
+              {PROFILE_QUESTIONS.map((question) => (
+                <div className="survey-item" key={question.id}>
+                  <span className="survey-question">{question.text}</span>
+                  {question.note ? (
+                    <span className="survey-note">{question.note}</span>
+                  ) : null}
+                  <div className="survey-scale">
+                    {[1, 2, 3, 4, 5].map((value) => (
+                      <label key={value}>
+                        <input
+                          type="radio"
+                          name={question.id}
+                          value={value}
+                          checked={surveyResponses[question.id] === String(value)}
+                          onChange={(event) =>
+                            handleSurveyChange(question.id, event.target.value)
+                          }
+                          required
+                          disabled={surveySubmitted}
+                        />
+                        <span>{value}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
               {SURVEY_QUESTIONS.map((question) => (
                 <div className="survey-item" key={question.id}>
                   <span className="survey-question">{question.text}</span>
