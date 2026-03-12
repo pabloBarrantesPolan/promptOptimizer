@@ -167,15 +167,6 @@ const SURVEY_QUESTIONS = [
   },
 ];
 
-const PROFILE_QUESTIONS = [
-  {
-    id: "genAiFamiliarity",
-    text:
-      "De 1 a 5, quanta familiaridade ou conhecimento você tem no uso de ferramentas de IA generativa?",
-    note: "Escala 1–5: 1 = Nenhuma familiaridade, 5 = Muito familiar.",
-  },
-];
-
 const buildOptimizedPrompt = (initialPrompt, answers) => {
   const lines = [];
   lines.push("Você é um assistente especializado em atender a solicitação abaixo.");
@@ -935,7 +926,7 @@ const App = () => {
                 <div className="admin-row" key={survey.id}>
                   <span className="mono">{survey.id.slice(0, 8)}...</span>
                   <span>
-                    {new Date(survey.createdAt).toLocaleString("pt-BR")}
+                    {new Date(survey.createdAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" })}
                   </span>
                   <span>
                     {survey.downloadedAt ? "Baixado" : "Pendente"}
@@ -1102,32 +1093,6 @@ const App = () => {
                 Concordo totalmente.
               </p>
               {surveyError ? <p className="error">{surveyError}</p> : null}
-              {PROFILE_QUESTIONS.map((question) => (
-                <div className="survey-item" key={question.id}>
-                  <span className="survey-question">{question.text}</span>
-                  {question.note ? (
-                    <span className="survey-note">{question.note}</span>
-                  ) : null}
-                  <div className="survey-scale">
-                    {[1, 2, 3, 4, 5].map((value) => (
-                      <label key={value}>
-                        <input
-                          type="radio"
-                          name={question.id}
-                          value={value}
-                          checked={surveyResponses[question.id] === String(value)}
-                          onChange={(event) =>
-                            handleSurveyChange(question.id, event.target.value)
-                          }
-                          required
-                          disabled={surveySubmitted}
-                        />
-                        <span>{value}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              ))}
               {SURVEY_QUESTIONS.map((question) => (
                 <div className="survey-item" key={question.id}>
                   <span className="survey-question">{question.text}</span>

@@ -276,9 +276,12 @@ app.get("/api/surveys/:id/export/txt", authMiddleware, async (req, res) => {
     if (!target) {
       return res.status(404).json({ error: "Formulário não encontrado." });
     }
+    const createdAtSP = new Date(target.createdAt).toLocaleString("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+    });
     const lines = [
       `Formulário de Avaliação - ID: ${target.id}`,
-      `Data: ${target.createdAt}`,
+      `Data: ${createdAtSP}`,
       "",
       "=== Prompt Inicial ===",
       target.initialPrompt,
