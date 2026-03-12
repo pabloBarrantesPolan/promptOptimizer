@@ -22,9 +22,23 @@ Após o deploy do stack, acesse o [AWS Secrets Manager](https://console.aws.amaz
 | `ADMIN_PASSWORD` | Senha do administrador inicial |
 | `JWT_SECRET` | Segredo para assinatura de tokens JWT |
 
-## Atualizar a aplicação na EC2
+## Preencher .env manualmente (sem Secrets Manager)
 
-Conecte via SSH e execute:
+Se o Secrets Manager não estiver configurado, use o template:
+
+```bash
+cd /home/ubuntu/app
+cp .env.template .env
+nano .env
+```
+
+Preencha `GEMINI_API_KEY`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` e `JWT_SECRET`. Salve (Ctrl+O, Enter) e saia (Ctrl+X). Depois:
+
+```bash
+docker-compose down && docker-compose up -d --build app
+```
+
+## Atualizar a aplicação na EC2
 
 ```bash
 cd /home/ubuntu/app
@@ -35,7 +49,9 @@ docker-compose down
 docker-compose up -d --build app
 ```
 
-O `.env` é recriado a cada deploy? Não — ele foi gerado apenas no primeiro boot. Para recarregar os segredos após alterar no Secrets Manager:
+## Recarregar segredos do Secrets Manager
+
+Se alterou os valores no Secrets Manager:
 
 ```bash
 REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)

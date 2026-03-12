@@ -13,8 +13,8 @@ Aplicação web para otimização de prompts em IA generativa, com base em boas 
 
 ## Configuração
 
-1. Copie `.env.example` para `.env`
-2. Defina `GEMINI_API_KEY` (obtenha em https://aistudio.google.com/apikey)
+1. Copie `.env.example` para `.env` (local) ou `.env.template` para `.env` (EC2)
+2. Defina `GEMINI_API_KEY`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `JWT_SECRET`
 3. Para desenvolvimento sem autenticação: `AUTH_ENABLED=false`
 4. Para desenvolvimento local: `DATA_DIR=./data` e `PORT=3001`
 
@@ -41,19 +41,11 @@ Ou via Docker:
 docker-compose up -d
 ```
 
-## Scripts de dados
-
-```bash
-npm run generate-simulated   # Gera 25 registros simulados
-npm run import-simulated    # Importa para surveys.json
-npm run analyze             # Análise estatística e gráficos
-```
 
 ## Estrutura
 
 - `src/` – Frontend React
 - `services/` – IA (Gemini), autenticação, usuários
 - `server.js` – Backend Express
-- `scripts/` – Geração e análise de dados
 - `outputs/` – Resultados da análise (JSON, SVG)
-- `docs/` – Template da monografia e slides
+

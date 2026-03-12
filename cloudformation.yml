@@ -160,8 +160,12 @@ Resources:
             git clone --branch ${RepoBranch} ${RepoUrl} app
             cd app
             ln -sfn /data ./data
+            if [ ! -f .env ]; then
+              cp .env.template .env
+            fi
             REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
-            aws secretsmanager get-secret-value --secret-id prompt-optimizer/app-secrets --region "$REGION" --query SecretString --output text | jq -r 'to_entries | .[] | "\(.key)=\(.value)"' > .env
+            aws secretsmanager get-secret-value --secret-id prompt-optimizer/app-secrets --region "$REGION" --query SecretString --output text 2>/dev/null | jq -r 'to_entries | .[] | "\(.key)=\(.value)"' > .env.tmp && mv .env.tmp .env || true
+            rm -f .env.tmp
             docker-compose up -d --build app
 
   AppDataVolume:
