@@ -5,6 +5,8 @@ services:
       - "80:80"
     environment:
       - DATA_DIR=/data
+    env_file:
+      - .env
     volumes:
       - ./data:/data
 

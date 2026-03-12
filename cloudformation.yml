@@ -136,7 +136,7 @@ Resources:
             #!/bin/bash
             set -eux
             apt-get update
-            apt-get install -y docker.io docker-compose git
+            apt-get install -y docker.io docker-compose git awscli jq
             usermod -aG docker ubuntu
             systemctl enable --now docker
             DATA_DEVICE=/dev/xvdf
@@ -159,7 +159,10 @@ Resources:
             rm -rf app
             git clone --branch ${RepoBranch} ${RepoUrl} app
             cd app
-            docker-compose up -d --build
+            ln -sfn /data ./data
+            REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
+            aws secretsmanager get-secret-value --secret-id prompt-optimizer/app-secrets --region "$REGION" --query SecretString --output text | jq -r 'to_entries | .[] | "\(.key)=\(.value)"' > .env
+            docker-compose up -d --build app
 
   AppDataVolume:
     Type: AWS::EC2::Volume
