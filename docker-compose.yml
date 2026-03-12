@@ -3,5 +3,20 @@ services:
     build: .
     ports:
       - "80:80"
+    environment:
+      - DATA_DIR=/data
+    volumes:
+      - ./data:/data
+
+  backend:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - DATA_DIR=/data
+      - NODE_ENV=development
+    env_file:
+      - .env
     volumes:
       - ./data:/data

@@ -19,6 +19,7 @@ RUN npm install --omit=dev
 
 COPY --from=build /app/dist ./dist
 COPY server.js ./
+COPY services ./services
 
 EXPOSE 80
 CMD ["npm", "start"]

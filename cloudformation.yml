@@ -71,6 +71,22 @@ Resources:
           ToPort: !Ref AppPort
           CidrIp: !Ref AppCidr
 
+  PromptOptimizerSecrets:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: prompt-optimizer/app-secrets
+      Description: "Segredos da aplicação (Gemini API, Admin, JWT)"
+      SecretString: !Sub |
+        {
+          "GEMINI_API_KEY": "REPLACE_WITH_YOUR_GEMINI_API_KEY",
+          "ADMIN_EMAIL": "REPLACE_WITH_YOUR_ADMIN_EMAIL",
+          "ADMIN_PASSWORD": "REPLACE_WITH_YOUR_ADMIN_PASSWORD",
+          "JWT_SECRET": "REPLACE_WITH_YOUR_JWT_SECRET"
+        }
+      Tags:
+        - Key: Application
+          Value: prompt-optimizer
+
   AppRole:
     Type: AWS::IAM::Role
     Properties:
@@ -83,6 +99,20 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  SecretsReadPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: SecretsManagerRead
+      Roles:
+        - !Ref AppRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue
+            Resource: !Ref PromptOptimizerSecrets
 
   AppInstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -146,6 +176,9 @@ Resources:
       Device: /dev/sdf
 
 Outputs:
+  SecretArn:
+    Description: ARN do secret (atualize os valores manualmente no console AWS)
+    Value: !Ref PromptOptimizerSecrets
   InstancePublicIP:
     Description: IP publico estatico (Elastic IP)
     Value: !Ref AppEip

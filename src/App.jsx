@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { apiFetch, getToken, setToken } from "./api.js";
 
 const QUESTIONS = [
   {
@@ -130,9 +131,20 @@ const FIELD_LABELS = [
   { key: "examples", label: "Exemplos/referências" },
   { key: "tone", label: "Tom/estilo" },
   { key: "criteria", label: "Critérios de sucesso" },
+  { key: "decomposition", label: "Decomposição" },
+  { key: "clarifications", label: "Política de clarificação" },
+  { key: "verification", label: "Autoavaliação" },
+  { key: "alternatives", label: "Alternativas" },
+  { key: "sources", label: "Fontes" },
+  { key: "safety", label: "Segurança/ética" },
 ];
 
 const SURVEY_QUESTIONS = [
+  {
+    id: "familiarity",
+    text:
+      "Qual seu nível de familiaridade com IA generativa? (1 = nenhuma, 5 = muito experiente)",
+  },
   {
     id: "clarity",
     text:
@@ -162,10 +174,11 @@ const buildOptimizedPrompt = (initialPrompt, answers) => {
   lines.push(`Solicitação original: ${initialPrompt}`);
   lines.push("");
   lines.push("Detalhes adicionais:");
-  FIELD_LABELS.forEach(({ key, label }) => {
-    const value = answers[key];
-    if (value && value.trim()) {
-      lines.push(`- ${label}: ${value.trim()}`);
+  QUESTIONS.forEach((question) => {
+    const value = answers[question.id];
+    if (value != null && String(value).trim()) {
+      const label = FIELD_LABELS.find((f) => f.key === question.id)?.label ?? question.id;
+      lines.push(`- ${label}: ${String(value).trim()}`);
     }
   });
   lines.push("");
@@ -181,9 +194,12 @@ const buildSummaryMessage = (initialPrompt, answers) => {
     "",
     "Resumo:",
   ];
-  FIELD_LABELS.forEach(({ key, label }) => {
-    const value = answers[key];
-    summaryLines.push(`- ${label}: ${value && value.trim() ? value.trim() : "Não informado"}`);
+  QUESTIONS.forEach((question) => {
+    const value = answers[question.id];
+    const label = FIELD_LABELS.find((f) => f.key === question.id)?.label ?? question.id;
+    summaryLines.push(
+      `- ${label}: ${value != null && String(value).trim() ? String(value).trim() : "Não informado"}`
+    );
   });
   summaryLines.push("");
   summaryLines.push("Prompt otimizado:");
@@ -191,10 +207,104 @@ const buildSummaryMessage = (initialPrompt, answers) => {
   return summaryLines.join("\n");
 };
 
+const copyTextToClipboard = async (text) => {
+  if (!text) return false;
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (error) {
+    // Fallback below.
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "absolute";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  textarea.setSelectionRange(0, textarea.value.length);
+  const successful = document.execCommand("copy");
+  textarea.remove();
+  return successful;
+};
+
 const initialAssistantMessage =
   "Digite seu prompt inicial para começar a conversa.";
 
+const LoginForm = ({ onLogin, onRegister, error }) => {
+  const [mode, setMode] = useState("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!email.trim() || !password) return;
+    setLoading(true);
+    setMsg("");
+    try {
+      if (mode === "login") {
+        await onLogin(email.trim(), password);
+      } else {
+        await onRegister(email.trim(), password);
+        setMsg("Cadastro realizado. Aguarde autorização do administrador.");
+        setMode("login");
+      }
+    } catch (err) {
+      setMsg(err.message || "Erro.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="login-form">
+      <h2>Prompt Optimizer</h2>
+      <p>Entre ou cadastre-se para usar a aplicação.</p>
+      <form onSubmit={handleSubmit}>
+        <input
+          type="email"
+          placeholder="E-mail"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          autoComplete="email"
+        />
+        <input
+          type="password"
+          placeholder="Senha"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+          autoComplete={mode === "login" ? "current-password" : "new-password"}
+        />
+        {(error || msg) ? <p className="error">{error || msg}</p> : null}
+        <button type="submit" disabled={loading}>
+          {loading ? "..." : mode === "login" ? "Entrar" : "Cadastrar"}
+        </button>
+      </form>
+      <button
+        type="button"
+        className="secondary"
+        onClick={() => {
+          setMode(mode === "login" ? "register" : "login");
+          setMsg("");
+        }}
+      >
+        {mode === "login" ? "Criar conta" : "Já tenho conta"}
+      </button>
+    </div>
+  );
+};
+
 const App = () => {
+  const [authEnabled, setAuthEnabled] = useState(null);
+  const [user, setUser] = useState(null);
+  const [authError, setAuthError] = useState("");
   const [messages, setMessages] = useState([
     { role: "assistant", content: initialAssistantMessage },
   ]);
@@ -214,7 +324,71 @@ const App = () => {
   const [surveyList, setSurveyList] = useState([]);
   const [surveyLoading, setSurveyLoading] = useState(false);
   const [surveyListError, setSurveyListError] = useState("");
+  const [userList, setUserList] = useState([]);
+  const [userListLoading, setUserListLoading] = useState(false);
+  const [userListError, setUserListError] = useState("");
+  const [aiResponseInitial, setAiResponseInitial] = useState("");
+  const [aiResponseOptimized, setAiResponseOptimized] = useState("");
+  const [sessionIdInitial, setSessionIdInitial] = useState(null);
+  const [sessionIdOptimized, setSessionIdOptimized] = useState(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiLoadingInitial, setAiLoadingInitial] = useState(false);
+  const [aiLoadingOptimized, setAiLoadingOptimized] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [aiConfigured, setAiConfigured] = useState(null);
   const endRef = useRef(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/status");
+        const data = await res.json();
+        setAuthEnabled(data.enabled ?? false);
+        if (data.enabled && getToken()) {
+          const surveysRes = await apiFetch("/api/surveys");
+          if (surveysRes.ok) {
+            const payload = JSON.parse(atob(getToken().split(".")[1]));
+            setUser({ id: payload.id, email: payload.email, role: payload.role });
+          } else {
+            setToken(null);
+          }
+        } else if (!data.enabled) {
+          setUser({ id: "anon", email: "", role: "user" });
+        }
+      } catch {
+        setAuthEnabled(true);
+        setUser(null);
+      }
+    })();
+  }, []);
+
+  const handleLogin = async (email, password) => {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Falha no login.");
+    setToken(data.token);
+    setUser(data.user);
+    setAuthError("");
+  };
+
+  const handleRegister = async (email, password) => {
+    const res = await fetch("/api/auth/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Falha no cadastro.");
+  };
+
+  const handleLogout = () => {
+    setToken(null);
+    setUser(null);
+  };
 
   useEffect(() => {
     if (endRef.current) {
@@ -226,6 +400,43 @@ const App = () => {
     if (stage !== "questioning") return "Pronto para começar";
     return `Pergunta ${currentQuestionIndex + 1} de ${QUESTIONS.length}`;
   }, [stage, currentQuestionIndex]);
+
+  const fetchAIStatus = async () => {
+    try {
+      const res = await fetch("/api/ai/status");
+      const data = await res.json();
+      setAiConfigured(data.configured ?? false);
+    } catch {
+      setAiConfigured(false);
+    }
+  };
+
+  useEffect(() => {
+    if (stage === "done") fetchAIStatus();
+  }, [stage]);
+
+  useEffect(() => {
+    if (view === "users" && user?.role !== "admin") {
+      setView("chat");
+    }
+  }, [view, user?.role]);
+
+  if (authEnabled === null) {
+    return <div className="app"><p>Carregando...</p></div>;
+  }
+  if (authEnabled && !user) {
+    return (
+      <div className="app">
+        <div className="login-wrapper">
+          <LoginForm
+            onLogin={handleLogin}
+            onRegister={handleRegister}
+            error={authError}
+          />
+        </div>
+      </div>
+    );
+  }
 
   const handleReset = () => {
     setMessages([{ role: "assistant", content: initialAssistantMessage }]);
@@ -241,6 +452,45 @@ const App = () => {
     setSurveyResponses({});
     setSurveySaving(false);
     setSurveyError("");
+    setAiResponseInitial("");
+    setAiResponseOptimized("");
+    setSessionIdInitial(null);
+    setSessionIdOptimized(null);
+    setAiError("");
+    setAiLoadingInitial(false);
+    setAiLoadingOptimized(false);
+  };
+
+  const handleConsultAI = async () => {
+    if (!optimizedPrompt || !originalPrompt || aiLoading) return;
+    setAiLoading(true);
+    setAiError("");
+    try {
+      const [resInitial, resOptimized] = await Promise.all([
+        apiFetch("/api/ai/query", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: originalPrompt }),
+        }),
+        apiFetch("/api/ai/query", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: optimizedPrompt }),
+        }),
+      ]);
+      const dataInitial = await resInitial.json();
+      const dataOptimized = await resOptimized.json();
+      if (!resInitial.ok) throw new Error(dataInitial.error || "Erro ao consultar IA (prompt inicial).");
+      if (!resOptimized.ok) throw new Error(dataOptimized.error || "Erro ao consultar IA (prompt otimizado).");
+      setAiResponseInitial(dataInitial.text);
+      setAiResponseOptimized(dataOptimized.text);
+      setSessionIdInitial(dataInitial.sessionId);
+      setSessionIdOptimized(dataOptimized.sessionId);
+    } catch (err) {
+      setAiError(err.message || "Não foi possível consultar a IA.");
+    } finally {
+      setAiLoading(false);
+    }
   };
 
   const optimizedPrompt =
@@ -249,23 +499,65 @@ const App = () => {
 
   const handleCopyPrompt = async () => {
     if (!optimizedPrompt) return;
-    try {
-      await navigator.clipboard.writeText(optimizedPrompt);
+    const successful = await copyTextToClipboard(optimizedPrompt);
+    if (successful) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (error) {
-      setCopied(false);
+      return;
     }
+    setCopied(false);
   };
 
   const handleCopyOriginalPrompt = async () => {
     if (!originalPrompt) return;
-    try {
-      await navigator.clipboard.writeText(originalPrompt);
+    const successful = await copyTextToClipboard(originalPrompt);
+    if (successful) {
       setCopiedOriginal(true);
       setTimeout(() => setCopiedOriginal(false), 2000);
-    } catch (error) {
-      setCopiedOriginal(false);
+      return;
+    }
+    setCopiedOriginal(false);
+  };
+
+  const handleTestPromptInitial = async () => {
+    if (!originalPrompt || aiLoadingInitial) return;
+    setAiLoadingInitial(true);
+    setAiError("");
+    try {
+      const res = await apiFetch("/api/ai/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: originalPrompt }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao testar prompt.");
+      setAiResponseInitial(data.text);
+      setSessionIdInitial(data.sessionId);
+    } catch (err) {
+      setAiError(err.message || "Não foi possível testar o prompt.");
+    } finally {
+      setAiLoadingInitial(false);
+    }
+  };
+
+  const handleTestPromptOptimized = async () => {
+    if (!optimizedPrompt || aiLoadingOptimized) return;
+    setAiLoadingOptimized(true);
+    setAiError("");
+    try {
+      const res = await apiFetch("/api/ai/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: optimizedPrompt }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao testar prompt.");
+      setAiResponseOptimized(data.text);
+      setSessionIdOptimized(data.sessionId);
+    } catch (err) {
+      setAiError(err.message || "Não foi possível testar o prompt.");
+    } finally {
+      setAiLoadingOptimized(false);
     }
   };
 
@@ -280,7 +572,7 @@ const App = () => {
     setSurveyLoading(true);
     setSurveyListError("");
     try {
-      const response = await fetch("/api/surveys");
+      const response = await apiFetch("/api/surveys");
       if (!response.ok) {
         throw new Error("Falha ao carregar.");
       }
@@ -293,13 +585,41 @@ const App = () => {
     }
   };
 
+  const loadUsers = async () => {
+    setUserListLoading(true);
+    setUserListError("");
+    try {
+      const response = await apiFetch("/api/users");
+      if (!response.ok) throw new Error("Falha ao carregar.");
+      const data = await response.json();
+      setUserList(Array.isArray(data) ? data : []);
+    } catch (error) {
+      setUserListError("Não foi possível carregar os usuários.");
+    } finally {
+      setUserListLoading(false);
+    }
+  };
+
+  const handleAuthorizeUser = async (userId) => {
+    setUserListError("");
+    try {
+      const response = await apiFetch(`/api/users/${userId}/authorize`, {
+        method: "POST",
+      });
+      if (!response.ok) throw new Error("Falha ao autorizar.");
+      await loadUsers();
+    } catch (error) {
+      setUserListError("Não foi possível autorizar o usuário.");
+    }
+  };
+
   const handleSurveySubmit = async (event) => {
     event.preventDefault();
     if (surveySubmitted || surveySaving) return;
     setSurveySaving(true);
     setSurveyError("");
     try {
-      const response = await fetch("/api/surveys", {
+      const response = await apiFetch("/api/surveys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -307,6 +627,10 @@ const App = () => {
           optimizedPrompt,
           answers,
           ratings: surveyResponses,
+          aiResponseInitial: aiResponseInitial || undefined,
+          aiResponseOptimized: aiResponseOptimized || undefined,
+          sessionIdInitial: sessionIdInitial || undefined,
+          sessionIdOptimized: sessionIdOptimized || undefined,
         }),
       });
       if (!response.ok) {
@@ -320,23 +644,24 @@ const App = () => {
     }
   };
 
-  const handleDownloadSurvey = async (surveyId) => {
+  const handleDownloadSurvey = async (surveyId, format = "json") => {
     setSurveyListError("");
     try {
-      const response = await fetch(`/api/surveys/${surveyId}/export`);
-      if (!response.ok) {
-        throw new Error("Falha ao baixar.");
-      }
+      const url = format === "txt"
+        ? `/api/surveys/${surveyId}/export/txt`
+        : `/api/surveys/${surveyId}/export`;
+      const response = await apiFetch(url);
+      if (!response.ok) throw new Error("Falha ao baixar.");
       const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
+      const downloadUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
-      link.href = url;
-      link.download = `survey-${surveyId}.json`;
+      link.href = downloadUrl;
+      link.download = `survey-${surveyId}.${format}`;
       document.body.appendChild(link);
       link.click();
       link.remove();
-      URL.revokeObjectURL(url);
-      await loadSurveys();
+      URL.revokeObjectURL(downloadUrl);
+      if (format === "json") await loadSurveys();
     } catch (error) {
       setSurveyListError("Não foi possível baixar o formulário.");
     }
@@ -345,7 +670,7 @@ const App = () => {
   const handleDeleteSurvey = async (surveyId) => {
     setSurveyListError("");
     try {
-      const response = await fetch(`/api/surveys/${surveyId}`, {
+      const response = await apiFetch(`/api/surveys/${surveyId}`, {
         method: "DELETE",
       });
       if (!response.ok) {
@@ -454,10 +779,18 @@ const App = () => {
           <p>Chat para refinar prompts com perguntas baseadas em boas práticas.</p>
         </div>
         <div className="status">
+          {user?.email ? (
+            <span className="user-email">{user.email}</span>
+          ) : null}
           <span>{progressLabel}</span>
           <button type="button" className="secondary" onClick={handleReset}>
             Reiniciar
           </button>
+          {authEnabled && user ? (
+            <button type="button" className="secondary" onClick={handleLogout}>
+              Sair
+            </button>
+          ) : null}
         </div>
       </header>
       <nav className="nav">
@@ -478,6 +811,18 @@ const App = () => {
         >
           Gestão de formulários
         </button>
+        {user?.role === "admin" ? (
+          <button
+            type="button"
+            className={view === "users" ? "nav-button active" : "nav-button"}
+            onClick={() => {
+              setView("users");
+              loadUsers();
+            }}
+          >
+            Usuários
+          </button>
+        ) : null}
       </nav>
 
       <section className="info">
@@ -497,7 +842,54 @@ const App = () => {
         ) : null}
       </section>
 
-      {view === "chat" ? (
+      {view === "users" && user?.role === "admin" ? (
+        <main className="admin">
+          <div className="admin-header">
+            <div>
+              <h2>Gestão de usuários</h2>
+              <p>Autorize novos usuários para acessar a aplicação.</p>
+            </div>
+            <button type="button" className="secondary" onClick={loadUsers}>
+              Atualizar
+            </button>
+          </div>
+          {userListLoading ? <p>Carregando usuários...</p> : null}
+          {userListError ? <p className="error">{userListError}</p> : null}
+          {!userListLoading && userList.length === 0 ? (
+            <p>Nenhum usuário cadastrado.</p>
+          ) : null}
+          {userList.length > 0 ? (
+            <div className="admin-table">
+              <div className="admin-row header users-row">
+                <span>E-mail</span>
+                <span>Função</span>
+                <span>Status</span>
+                <span>Ações</span>
+              </div>
+              {userList.map((u) => (
+                <div className="admin-row users-row" key={u.id}>
+                  <span>{u.email}</span>
+                  <span>{u.role === "admin" ? "Admin" : "Usuário"}</span>
+                  <span>
+                    {u.authorizedAt ? "Autorizado" : "Pendente"}
+                  </span>
+                  <span className="admin-actions">
+                    {!u.authorizedAt && u.role !== "admin" ? (
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => handleAuthorizeUser(u.id)}
+                      >
+                        Autorizar
+                      </button>
+                    ) : null}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </main>
+      ) : view === "chat" ? (
         <main className="chat">
           {messages.map((message, index) => (
             <div key={index} className={`message ${message.role}`}>
@@ -543,9 +935,16 @@ const App = () => {
                     <button
                       type="button"
                       className="secondary"
-                      onClick={() => handleDownloadSurvey(survey.id)}
+                      onClick={() => handleDownloadSurvey(survey.id, "json")}
                     >
-                      Baixar
+                      JSON
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => handleDownloadSurvey(survey.id, "txt")}
+                    >
+                      TXT
                     </button>
                     <button
                       type="button"
@@ -568,13 +967,25 @@ const App = () => {
             <div className="prompt-panel">
               <div className="prompt-header">
                 <h2>Prompt inicial</h2>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={handleCopyOriginalPrompt}
-                >
-                  {copiedOriginal ? "Copiado!" : "Copiar"}
-                </button>
+                <div className="prompt-actions">
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={handleCopyOriginalPrompt}
+                  >
+                    {copiedOriginal ? "Copiado!" : "Copiar"}
+                  </button>
+                  {aiConfigured === true ? (
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={handleTestPromptInitial}
+                      disabled={aiLoadingInitial || aiLoading}
+                    >
+                      {aiLoadingInitial ? "Testando..." : "Testar prompt"}
+                    </button>
+                  ) : null}
+                </div>
               </div>
               <div className="prompt-box">
                 <pre>{originalPrompt}</pre>
@@ -587,13 +998,25 @@ const App = () => {
             <div className="prompt-panel">
               <div className="prompt-header">
                 <h2>Prompt otimizado</h2>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={handleCopyPrompt}
-                >
-                  {copied ? "Copiado!" : "Copiar"}
-                </button>
+                <div className="prompt-actions">
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={handleCopyPrompt}
+                  >
+                    {copied ? "Copiado!" : "Copiar"}
+                  </button>
+                  {aiConfigured === true ? (
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={handleTestPromptOptimized}
+                      disabled={aiLoadingOptimized || aiLoading}
+                    >
+                      {aiLoadingOptimized ? "Testando..." : "Testar prompt"}
+                    </button>
+                  ) : null}
+                </div>
               </div>
               <div className="prompt-box">
                 <pre>{optimizedPrompt}</pre>
@@ -603,6 +1026,47 @@ const App = () => {
               </p>
             </div>
           </div>
+
+          {aiConfigured === true ? (
+            <div className="ai-consult-section">
+              <h3>Consultar IA (comparação A/B)</h3>
+              <p>
+                Envie ambos os prompts para a IA em sessões independentes e
+                compare as respostas.
+              </p>
+              {aiError ? <p className="error">{aiError}</p> : null}
+              <button
+                type="button"
+                className="secondary"
+                onClick={handleConsultAI}
+                disabled={aiLoading}
+              >
+                {aiLoading ? "Consultando IA..." : "Consultar IA"}
+              </button>
+              {(aiResponseInitial || aiResponseOptimized) ? (
+                <div className="ai-response-panels">
+                  <div className="prompt-panel">
+                    <h4>Resposta IA – Prompt inicial</h4>
+                    <div className="prompt-box">
+                      <pre>{aiResponseInitial || "—"}</pre>
+                    </div>
+                  </div>
+                  <div className="prompt-panel">
+                    <h4>Resposta IA – Prompt otimizado</h4>
+                    <div className="prompt-box">
+                      <pre>{aiResponseOptimized || "—"}</pre>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : aiConfigured === false ? (
+            <p className="prompt-hint">
+              IA não configurada. Defina GEMINI_API_KEY no servidor para
+              consultar a IA diretamente.
+            </p>
+          ) : null}
+
           <div className="survey-actions">
             <button
               type="button"

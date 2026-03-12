@@ -151,6 +151,59 @@ a:hover {
   border-radius: 12px;
 }
 
+.admin-row.users-row {
+  grid-template-columns: minmax(180px, 2fr) minmax(80px, 1fr) minmax(100px, 1fr) minmax(120px, 1fr);
+}
+
+.login-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 60vh;
+}
+
+.login-form {
+  background: #ffffff;
+  padding: 32px;
+  border-radius: 16px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 360px;
+  width: 100%;
+}
+
+.login-form h2 {
+  margin: 0;
+}
+
+.login-form p {
+  margin: 0;
+  color: #4a5568;
+}
+
+.login-form input {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  font-size: 16px;
+}
+
+.login-form form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.user-email {
+  font-size: 13px;
+  color: #4a5568;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .admin-row.header {
   background: #f8fafc;
   font-weight: 600;
@@ -344,6 +397,12 @@ a:hover {
   gap: 12px;
 }
 
+.prompt-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .prompt-header h2 {
   margin: 0;
   font-size: 18px;
@@ -368,6 +427,40 @@ a:hover {
   margin: 0;
   color: #4a5568;
   font-size: 14px;
+}
+
+.ai-consult-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid #e2e8f0;
+}
+
+.ai-consult-section h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.ai-consult-section p {
+  margin: 0;
+  color: #4a5568;
+}
+
+.ai-response-panels {
+  display: grid;
+  gap: 16px;
+}
+
+.ai-response-panels .prompt-panel h4 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+@media (min-width: 900px) {
+  .ai-response-panels {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .secondary {

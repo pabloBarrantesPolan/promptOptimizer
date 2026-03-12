@@ -1,0 +1,34 @@
+# Dependências
+node_modules/
+
+# Build
+dist/
+build/
+
+# Variáveis de ambiente (contém chaves e senhas)
+.env
+.env.local
+.env.*.local
+
+# Dados de runtime (usuários, surveys)
+data/
+
+# Scripts TCC (dados simulados, análise) - manter local
+scripts/
+
+# Outputs de análise
+outputs/
+
+# Logs e cache
+*.log
+.cache/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
