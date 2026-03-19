@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173",
     "dev:server": "node server.js",
+    "dev:docker": "docker compose up backend",
     "build": "vite build",
     "generate-simulated": "node scripts/generate-simulated-data.js",
     "import-simulated": "node scripts/import-simulated.js",

@@ -78,29 +78,32 @@ const QUESTIONS = [
   {
     id: "clarifications",
     text:
-      "Se faltar informação, o modelo deve fazer perguntas de clarificação antes de responder?",
+      "Clarificação: caso precise de mais informações para responder adequadamente, o modelo pode fazer perguntas antes de dar a resposta final. Isso evita suposições e aumenta a precisão.\n\nDeseja incluir essa instrução no prompt?",
     rationale: "Evitar suposições e aumentar precisão.",
     promptPart: "Política de clarificação.",
     detail:
       "Permite que o modelo questione lacunas antes de concluir.",
+    yesNoOnly: true,
   },
   {
     id: "verification",
     text:
-      "Você quer que o modelo verifique a própria resposta (auto-crítica) antes de entregar?",
+      "Autoavaliação: o modelo deve verificar a própria resposta antes de entregar, conferindo se atende aos critérios definidos. Isso incentiva revisão e correção antes da resposta final.\n\nDeseja incluir essa instrução no prompt?",
     rationale: "Autoavaliação melhora consistência.",
     promptPart: "Autoavaliação / verificação.",
     detail:
       "Incentiva revisão e correção antes da resposta final.",
+    yesNoOnly: true,
   },
   {
     id: "alternatives",
     text:
-      "Deseja que o modelo gere mais de uma alternativa e escolha a melhor?",
+      "Alternativas: o modelo deve retornar várias alternativas com seus pontos positivos e negativos, e indicar qual é a recomendada. Isso pode aumentar a chance de uma resposta superior.\n\nDeseja incluir essa instrução no prompt?",
     rationale: "Self-consistency e ensembling.",
     promptPart: "Múltiplas respostas / seleção.",
     detail:
       "Gerar alternativas pode aumentar a chance de uma resposta superior.",
+    yesNoOnly: true,
   },
   {
     id: "sources",
@@ -139,6 +142,14 @@ const FIELD_LABELS = [
   { key: "safety", label: "Segurança/ética" },
 ];
 
+const getAiOptimizedFinal = (val) => {
+  if (!val) return "";
+  if (typeof val === "string") return val;
+  return val.finalResponse || "";
+};
+
+const getAiOptimizedHasResponse = (val) => Boolean(getAiOptimizedFinal(val));
+
 const SURVEY_QUESTIONS = [
   {
     id: "familiarity",
@@ -167,21 +178,77 @@ const SURVEY_QUESTIONS = [
   },
 ];
 
+const PROMPT_INSTRUCTIONS = {
+  clarifications: "Caso precise de mais informações, pode perguntar antes de responder.",
+  verification: "Faça autoavaliação da resposta antes de entregar, verificando se atende aos critérios.",
+  alternatives: "Retorne várias alternativas com seus pontos positivos e negativos, e indique a recomendada.",
+};
+
+const NAO_PATTERNS = /^(n[ao]?|nope|nada)$/i;
+const SIM_PATTERNS = /^(sim|s|yes|y|ok|okay)$/i;
+
+const formatPromptValue = (value, fieldId) => {
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  if (NAO_PATTERNS.test(trimmed)) return null;
+  const instruction = PROMPT_INSTRUCTIONS[fieldId];
+  if (instruction && SIM_PATTERNS.test(trimmed)) {
+    return instruction;
+  }
+  return trimmed;
+};
+
 const buildOptimizedPrompt = (initialPrompt, answers) => {
+  const sentences = [];
+  const getVal = (id) => formatPromptValue(answers[id], id);
+
+  const goal = getVal("goal");
+  const audience = getVal("audience");
+  if (goal) sentences.push(`O objetivo é ${goal}.`);
+  if (audience) sentences.push(`O público-alvo são ${audience}.`);
+
+  const context = getVal("context");
+  const constraints = getVal("constraints");
+  if (context) sentences.push(`O contexto envolve ${context}.`);
+  if (constraints) sentences.push(`As restrições incluem: ${constraints}.`);
+
+  const format = getVal("format");
+  const examples = getVal("examples");
+  if (format) sentences.push(`O formato de saída deve ser ${format}.`);
+  if (examples) sentences.push(`Utilize como referência: ${examples}.`);
+
+  const tone = getVal("tone");
+  const criteria = getVal("criteria");
+  if (tone) sentences.push(`O tom deve ser ${tone}.`);
+  if (criteria) sentences.push(`Os critérios de sucesso são: ${criteria}.`);
+
+  const decomposition = getVal("decomposition");
+  if (decomposition) sentences.push(`A abordagem deve considerar: ${decomposition}.`);
+
+  const clar = getVal("clarifications");
+  const verif = getVal("verification");
+  const alt = getVal("alternatives");
+  const extras = [clar, verif, alt].filter(Boolean);
+  if (extras.length) sentences.push(`Adicionalmente: ${extras.join(". ")}.`);
+
+  const sources = getVal("sources");
+  const safety = getVal("safety");
+  if (sources) sentences.push(`Considere as fontes: ${sources}.`);
+  if (safety) sentences.push(`Respeite os requisitos de segurança e ética: ${safety}.`);
+
+  const detailsParagraphs = sentences.join("\n\n");
+
   const lines = [];
   lines.push("Você é um assistente especializado em atender a solicitação abaixo.");
   lines.push("");
   lines.push(`Solicitação original: ${initialPrompt}`);
   lines.push("");
-  lines.push("Detalhes adicionais:");
-  QUESTIONS.forEach((question) => {
-    const value = answers[question.id];
-    if (value != null && String(value).trim()) {
-      const label = FIELD_LABELS.find((f) => f.key === question.id)?.label ?? question.id;
-      lines.push(`- ${label}: ${String(value).trim()}`);
-    }
-  });
-  lines.push("");
+  if (detailsParagraphs) {
+    lines.push("Detalhes adicionais:");
+    lines.push("");
+    lines.push(detailsParagraphs);
+    lines.push("");
+  }
   lines.push(
     "Instruções: responda seguindo o formato solicitado, respeite as restrições e maximize os critérios de sucesso."
   );
@@ -328,7 +395,11 @@ const App = () => {
   const [userListLoading, setUserListLoading] = useState(false);
   const [userListError, setUserListError] = useState("");
   const [aiResponseInitial, setAiResponseInitial] = useState("");
-  const [aiResponseOptimized, setAiResponseOptimized] = useState("");
+  const [aiResponseOptimized, setAiResponseOptimized] = useState(
+    null
+  ); /* { initialResponse, AIQuestionResponse, finalResponse } ou null */
+  const [aiFollowUpInput, setAiFollowUpInput] = useState("");
+  const [aiLoadingFollowUp, setAiLoadingFollowUp] = useState(false);
   const [sessionIdInitial, setSessionIdInitial] = useState(null);
   const [sessionIdOptimized, setSessionIdOptimized] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
@@ -453,12 +524,14 @@ const App = () => {
     setSurveySaving(false);
     setSurveyError("");
     setAiResponseInitial("");
-    setAiResponseOptimized("");
+    setAiResponseOptimized(null);
+    setAiFollowUpInput("");
     setSessionIdInitial(null);
     setSessionIdOptimized(null);
     setAiError("");
     setAiLoadingInitial(false);
     setAiLoadingOptimized(false);
+    setAiLoadingFollowUp(false);
   };
 
   const handleConsultAI = async () => {
@@ -483,7 +556,11 @@ const App = () => {
       if (!resInitial.ok) throw new Error(dataInitial.error || "Erro ao consultar IA (prompt inicial).");
       if (!resOptimized.ok) throw new Error(dataOptimized.error || "Erro ao consultar IA (prompt otimizado).");
       setAiResponseInitial(dataInitial.text);
-      setAiResponseOptimized(dataOptimized.text);
+      setAiResponseOptimized({
+        initialResponse: dataOptimized.text,
+        AIQuestionResponse: "",
+        finalResponse: dataOptimized.text,
+      });
       setSessionIdInitial(dataInitial.sessionId);
       setSessionIdOptimized(dataOptimized.sessionId);
     } catch (err) {
@@ -552,12 +629,61 @@ const App = () => {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erro ao testar prompt.");
-      setAiResponseOptimized(data.text);
+      setAiResponseOptimized({
+        initialResponse: data.text,
+        AIQuestionResponse: "",
+        finalResponse: data.text,
+      });
       setSessionIdOptimized(data.sessionId);
     } catch (err) {
       setAiError(err.message || "Não foi possível testar o prompt.");
     } finally {
       setAiLoadingOptimized(false);
+    }
+  };
+
+  const handleSendFollowUp = async () => {
+    const reply = aiFollowUpInput?.trim();
+    const prevResponse = aiResponseOptimized;
+    const prevText = prevResponse && (typeof prevResponse === "string" ? prevResponse : prevResponse.initialResponse);
+    if (!reply || !optimizedPrompt || !prevText || aiLoadingFollowUp) return;
+    setAiLoadingFollowUp(true);
+    setAiError("");
+    const extendedPrompt = `${optimizedPrompt}
+
+---
+Resposta anterior da IA:
+---
+${prevText}
+
+---
+Resposta do usuário:
+---
+${reply}
+
+---
+Com base nas informações acima, prossiga com a resposta final.
+`;
+    try {
+      const res = await apiFetch("/api/ai/query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: extendedPrompt }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao enviar resposta.");
+      const base = typeof prevResponse === "object" ? prevResponse : { initialResponse: prevText, AIQuestionResponse: "", finalResponse: prevText };
+      setAiResponseOptimized({
+        ...base,
+        AIQuestionResponse: reply,
+        finalResponse: data.text,
+      });
+      setSessionIdOptimized(data.sessionId);
+      setAiFollowUpInput("");
+    } catch (err) {
+      setAiError(err.message || "Não foi possível enviar a resposta.");
+    } finally {
+      setAiLoadingFollowUp(false);
     }
   };
 
@@ -628,7 +754,7 @@ const App = () => {
           answers,
           ratings: surveyResponses,
           aiResponseInitial: aiResponseInitial || undefined,
-          aiResponseOptimized: aiResponseOptimized || undefined,
+          aiResponseOptimized: aiResponseOptimized ?? undefined,
           sessionIdInitial: sessionIdInitial || undefined,
           sessionIdOptimized: sessionIdOptimized || undefined,
         }),
@@ -682,6 +808,42 @@ const App = () => {
     }
   };
 
+  const advanceQuestion = (answerText, updatedAnswers) => {
+    const nextIndex = currentQuestionIndex + 1;
+    const nextQuestion = QUESTIONS[nextIndex];
+    setAnswers(updatedAnswers);
+    if (nextQuestion) {
+      setCurrentQuestionIndex(nextIndex);
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", content: answerText },
+        { role: "assistant", content: nextQuestion.text },
+      ]);
+    } else {
+      setStage("done");
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", content: answerText },
+        {
+          role: "assistant",
+          content: buildSummaryMessage(initialPrompt, updatedAnswers),
+        },
+      ]);
+    }
+  };
+
+  const handleAnswerYesNo = (value) => {
+    if (stage !== "questioning") return;
+    const currentQuestion = QUESTIONS[currentQuestionIndex];
+    if (!currentQuestion?.yesNoOnly) return;
+    const answerText = value === "Sim" ? "Sim" : "Não";
+    const updatedAnswers = {
+      ...answers,
+      [currentQuestion.id]: answerText,
+    };
+    advanceQuestion(answerText, updatedAnswers);
+  };
+
   const handleSubmit = (event) => {
     event.preventDefault();
     const text = input.trim();
@@ -702,36 +864,16 @@ const App = () => {
     }
 
     if (stage === "questioning") {
+      const currentQuestion = QUESTIONS[currentQuestionIndex];
+      if (currentQuestion?.yesNoOnly) return; // Resposta via botões Sim/Não
       const isRequired = currentQuestionIndex === 0;
       if (isRequired && !text) return;
       setInput("");
-      const currentQuestion = QUESTIONS[currentQuestionIndex];
       const updatedAnswers = {
         ...answers,
         [currentQuestion.id]: text,
       };
-      const nextIndex = currentQuestionIndex + 1;
-      const nextQuestion = QUESTIONS[nextIndex];
-
-      setAnswers(updatedAnswers);
-      if (nextQuestion) {
-        setCurrentQuestionIndex(nextIndex);
-        setMessages((prev) => [
-          ...prev,
-          { role: "user", content: text },
-          { role: "assistant", content: nextQuestion.text },
-        ]);
-      } else {
-        setStage("done");
-        setMessages((prev) => [
-          ...prev,
-          { role: "user", content: text },
-          {
-            role: "assistant",
-            content: buildSummaryMessage(initialPrompt, updatedAnswers),
-          },
-        ]);
-      }
+      advanceQuestion(text, updatedAnswers);
       return;
     }
 
@@ -946,13 +1088,15 @@ const App = () => {
                     >
                       TXT
                     </button>
-                    <button
-                      type="button"
-                      className="danger"
-                      onClick={() => handleDeleteSurvey(survey.id)}
-                    >
-                      Excluir
-                    </button>
+                    {user?.role === "admin" ? (
+                      <button
+                        type="button"
+                        className="danger"
+                        onClick={() => handleDeleteSurvey(survey.id)}
+                      >
+                        Excluir
+                      </button>
+                    ) : null}
                   </span>
                 </div>
               ))}
@@ -1043,7 +1187,7 @@ const App = () => {
               >
                 {aiLoading ? "Consultando IA..." : "Consultar IA"}
               </button>
-              {(aiResponseInitial || aiResponseOptimized) ? (
+              {(aiResponseInitial || getAiOptimizedHasResponse(aiResponseOptimized)) ? (
                 <div className="ai-response-panels">
                   <div className="prompt-panel">
                     <h4>Resposta IA – Prompt inicial</h4>
@@ -1052,10 +1196,35 @@ const App = () => {
                     </div>
                   </div>
                   <div className="prompt-panel">
-                    <h4>Resposta IA – Prompt otimizado</h4>
+                    <h4>Resposta IA – Prompt otimizado (versão final)</h4>
                     <div className="prompt-box">
-                      <pre>{aiResponseOptimized || "—"}</pre>
+                      <pre>{getAiOptimizedFinal(aiResponseOptimized) || "—"}</pre>
                     </div>
+                    {getAiOptimizedHasResponse(aiResponseOptimized) ? (
+                      <div className="ai-follow-up">
+                        <p className="prompt-hint">
+                          A IA fez perguntas? Digite sua resposta abaixo e envie para obter a versão final.
+                        </p>
+                        <div className="follow-up-input-row">
+                          <input
+                            type="text"
+                            placeholder="Sua resposta às perguntas da IA..."
+                            value={aiFollowUpInput}
+                            onChange={(e) => setAiFollowUpInput(e.target.value)}
+                            aria-label="Resposta adicional para a IA"
+                            disabled={aiLoadingFollowUp}
+                          />
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={handleSendFollowUp}
+                            disabled={!aiFollowUpInput?.trim() || aiLoadingFollowUp}
+                          >
+                            {aiLoadingFollowUp ? "Enviando..." : "Enviar e obter versão final"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               ) : null}
@@ -1132,29 +1301,57 @@ const App = () => {
 
       {view === "chat" ? (
         <form className="composer" onSubmit={handleSubmit}>
-          <input
-            type="text"
-            placeholder={
-              stage === "done"
-                ? "Clique em reiniciar para iniciar um novo prompt."
-                : "Digite aqui..."
-            }
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            aria-label="Mensagem"
-            disabled={stage === "done"}
-          />
-          {stage === "done" ? (
-            <button type="button" className="secondary" onClick={handleReset}>
-              Reiniciar
-            </button>
-          ) : null}
-          {stage !== "done" ? <button type="submit">Enviar</button> : null}
-          {stage === "questioning" && currentQuestionIndex > 0 ? (
-            <button type="button" className="secondary" onClick={handleSkip}>
-              Pular
-            </button>
-          ) : null}
+          {stage === "questioning" && QUESTIONS[currentQuestionIndex]?.yesNoOnly ? (
+            <div className="yes-no-buttons">
+              <button
+                type="button"
+                className="primary"
+                onClick={() => handleAnswerYesNo("Sim")}
+                aria-label="Sim"
+              >
+                Sim
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => handleAnswerYesNo("Não")}
+                aria-label="Não"
+              >
+                Não
+              </button>
+              {currentQuestionIndex > 0 ? (
+                <button type="button" className="secondary" onClick={handleSkip}>
+                  Pular
+                </button>
+              ) : null}
+            </div>
+          ) : (
+            <>
+              <input
+                type="text"
+                placeholder={
+                  stage === "done"
+                    ? "Clique em reiniciar para iniciar um novo prompt."
+                    : "Digite aqui..."
+                }
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                aria-label="Mensagem"
+                disabled={stage === "done"}
+              />
+              {stage === "done" ? (
+                <button type="button" className="secondary" onClick={handleReset}>
+                  Reiniciar
+                </button>
+              ) : null}
+              {stage !== "done" ? <button type="submit">Enviar</button> : null}
+              {stage === "questioning" && currentQuestionIndex > 0 ? (
+                <button type="button" className="secondary" onClick={handleSkip}>
+                  Pular
+                </button>
+              ) : null}
+            </>
+          )}
         </form>
       ) : null}
     </div>

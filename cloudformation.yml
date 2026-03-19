@@ -19,7 +19,10 @@ Parameters:
     Description: VPC onde a instancia sera criada.
   SubnetId:
     Type: AWS::EC2::Subnet::Id
-    Description: Subnet publica para a instancia.
+    Description: Subnet publica para a instancia EC2.
+  SubnetId2:
+    Type: AWS::EC2::Subnet::Id
+    Description: Segunda subnet publica (outra AZ) para o ALB. O ALB exige 2 subnets em zonas diferentes.
   RepoUrl:
     Type: String
     Description: URL git do repositorio.
@@ -45,21 +48,21 @@ Parameters:
     Description: CIDR permitido para acessar a aplicacao.
 
 Resources:
-  AppEip:
-    Type: AWS::EC2::EIP
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
     Properties:
-      Domain: vpc
-
-  AppEipAssociation:
-    Type: AWS::EC2::EIPAssociation
-    Properties:
-      AllocationId: !GetAtt AppEip.AllocationId
-      InstanceId: !Ref AppInstance
+      GroupDescription: Acesso HTTP ao ALB
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: !Ref AppCidr
 
   AppSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: Acesso SSH e aplicacao
+      GroupDescription: Acesso SSH e aplicacao (traffico via ALB)
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
@@ -69,7 +72,7 @@ Resources:
         - IpProtocol: tcp
           FromPort: !Ref AppPort
           ToPort: !Ref AppPort
-          CidrIp: !Ref AppCidr
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
 
   PromptOptimizerSecrets:
     Type: AWS::SecretsManager::Secret
@@ -182,16 +185,59 @@ Resources:
       VolumeId: !Ref AppDataVolume
       Device: /dev/sdf
 
+  AppTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: prompt-optimizer-project-tg
+      Port: !Ref AppPort
+      Protocol: HTTP
+      VpcId: !Ref VpcId
+      HealthCheckEnabled: true
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+
+  AppLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: prompt-optimizer-project
+      Type: application
+      Scheme: internet-facing
+      Subnets:
+        - !Ref SubnetId
+        - !Ref SubnetId2
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+
+  AppListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref AppLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref AppTargetGroup
+
+  AppTargetGroupAttachment:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroupAttachment
+    Properties:
+      TargetGroupArn: !Ref AppTargetGroup
+      TargetId: !Ref AppInstance
+      Port: !Ref AppPort
+
 Outputs:
   SecretArn:
     Description: ARN do secret (atualize os valores manualmente no console AWS)
     Value: !Ref PromptOptimizerSecrets
-  InstancePublicIP:
-    Description: IP publico estatico (Elastic IP)
-    Value: !Ref AppEip
-  InstancePublicDNS:
-    Description: DNS publico da instancia
-    Value: !GetAtt AppInstance.PublicDnsName
+  InstanceId:
+    Description: ID da instancia EC2
+    Value: !Ref AppInstance
+  AppLoadBalancerDNS:
+    Description: DNS do ALB (acesso publico pela internet)
+    Value: !GetAtt AppLoadBalancer.DNSName
   AppURL:
-    Description: URL da aplicacao
-    Value: !Sub "http://${AppEip}:${AppPort}"
+    Description: URL da aplicacao (via ALB)
+    Value: !Sub "http://${AppLoadBalancer.DNSName}"

@@ -22,6 +22,23 @@ const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), "data");
 const DATA_FILE = path.join(DATA_DIR, "surveys.json");
 const AUTH_ENABLED = process.env.AUTH_ENABLED !== "false";
 
+const QUESTION_LABELS = {
+  goal: "Objetivo",
+  audience: "Público-alvo",
+  context: "Contexto",
+  constraints: "Restrições",
+  format: "Formato de saída",
+  examples: "Exemplos/referências",
+  tone: "Tom/estilo",
+  criteria: "Critérios de sucesso",
+  decomposition: "Decomposição",
+  clarifications: "Política de clarificação",
+  verification: "Autoavaliação",
+  alternatives: "Alternativas",
+  sources: "Fontes",
+  safety: "Segurança/ética",
+};
+
 app.use(express.json({ limit: "1mb" }));
 
 const authMiddleware = (req, res, next) => {
@@ -289,6 +306,13 @@ app.get("/api/surveys/:id/export/txt", authMiddleware, async (req, res) => {
       "=== Prompt Otimizado ===",
       target.optimizedPrompt,
       "",
+      "=== Perguntas e Respostas do Questionário ===",
+      ...Object.entries(target.answers || {}).map(([key, value]) => {
+        const label = QUESTION_LABELS[key] || key;
+        const displayValue = value != null && String(value).trim() ? String(value).trim() : "(não informado)";
+        return `${label}:\n  ${displayValue}`;
+      }),
+      "",
       "=== Avaliações (Likert 1-5) ===",
       ...Object.entries(target.ratings || {}).map(
         ([k, v]) => `${k}: ${v}`
@@ -299,7 +323,12 @@ app.get("/api/surveys/:id/export/txt", authMiddleware, async (req, res) => {
       lines.push("=== Resposta IA – Prompt Inicial ===", target.aiResponseInitial, "");
     }
     if (target.aiResponseOptimized) {
-      lines.push("=== Resposta IA – Prompt Otimizado ===", target.aiResponseOptimized, "");
+      const finalText = typeof target.aiResponseOptimized === "object"
+        ? target.aiResponseOptimized.finalResponse
+        : target.aiResponseOptimized;
+      if (finalText) {
+        lines.push("=== Resposta IA – Prompt Otimizado (versão final) ===", finalText, "");
+      }
     }
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.setHeader(
@@ -312,7 +341,7 @@ app.get("/api/surveys/:id/export/txt", authMiddleware, async (req, res) => {
   }
 });
 
-app.delete("/api/surveys/:id", authMiddleware, async (req, res) => {
+app.delete("/api/surveys/:id", authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const surveys = await readSurveys();
     const filtered = surveys.filter((item) => item.id !== req.params.id);

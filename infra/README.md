@@ -1,5 +1,17 @@
 # Infraestrutura AWS - Prompt Optimizer
 
+## Arquitetura
+
+- **ALB** (`prompt-optimizer-project`): Application Load Balancer internet-facing, expõe a aplicação na porta 80.
+- **EC2**: Instância única registrada como target no ALB.
+- **Acesso**: Use a URL do ALB (ex: `http://prompt-optimizer-project-xxx.elb.region.amazonaws.com`) — sem custo de domínio nem Route 53.
+
+## Parâmetros obrigatórios
+
+- **SubnetId**: Subnet pública para a EC2.
+- **SubnetId2**: Segunda subnet pública (outra AZ) para o ALB. O ALB exige 2 subnets em zonas de disponibilidade diferentes.
+
+
 ## Como a app recebe os segredos
 
 1. O **UserData** da instância EC2 instala `awscli` e `jq`
