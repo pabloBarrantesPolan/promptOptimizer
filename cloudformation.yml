@@ -194,6 +194,9 @@ Resources:
       Port: !Ref AppPort
       Protocol: HTTP
       VpcId: !Ref VpcId
+      Targets:
+        - Id: !Ref AppInstance
+          Port: !Ref AppPort
       HealthCheckEnabled: true
       HealthCheckPath: /
       HealthCheckProtocol: HTTP
@@ -222,13 +225,6 @@ Resources:
       DefaultActions:
         - Type: forward
           TargetGroupArn: !Ref AppTargetGroup
-
-  AppTargetGroupAttachment:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroupAttachment
-    Properties:
-      TargetGroupArn: !Ref AppTargetGroup
-      TargetId: !Ref AppInstance
-      Port: !Ref AppPort
 
 Outputs:
   SecretArn:

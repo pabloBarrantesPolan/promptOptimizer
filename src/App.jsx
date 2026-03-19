@@ -198,55 +198,61 @@ const formatPromptValue = (value, fieldId) => {
   return trimmed;
 };
 
+/**
+ * Template do prompt otimizado (engenharia de prompt).
+ * Regras: (1) só incluir campos que o usuário respondeu; (2) passar respostas verbatim;
+ * (3) não variar por nível de conhecimento; (4) objetivo: avaliar se boas práticas melhoram resultados.
+ */
+const DETAIL_FIELDS = [
+  { id: "goal", label: "Objetivo" },
+  { id: "audience", label: "Público-alvo" },
+  { id: "context", label: "Contexto" },
+  { id: "constraints", label: "Restrições" },
+  { id: "format", label: "Formato de saída" },
+  { id: "examples", label: "Exemplos/referências" },
+  { id: "tone", label: "Tom/estilo" },
+  { id: "criteria", label: "Critérios de sucesso" },
+  { id: "decomposition", label: "Abordagem" },
+];
+
+const INSTRUCTION_FIELDS = ["clarifications", "verification", "alternatives"];
+
 const buildOptimizedPrompt = (initialPrompt, answers) => {
-  const sentences = [];
   const getVal = (id) => formatPromptValue(answers[id], id);
 
-  const goal = getVal("goal");
-  const audience = getVal("audience");
-  if (goal) sentences.push(`O objetivo é ${goal}.`);
-  if (audience) sentences.push(`O público-alvo são ${audience}.`);
+  const detailLines = [];
+  for (const { id, label } of DETAIL_FIELDS) {
+    const val = getVal(id);
+    if (val) detailLines.push(`${label}: ${val}`);
+  }
 
-  const context = getVal("context");
-  const constraints = getVal("constraints");
-  if (context) sentences.push(`O contexto envolve ${context}.`);
-  if (constraints) sentences.push(`As restrições incluem: ${constraints}.`);
-
-  const format = getVal("format");
-  const examples = getVal("examples");
-  if (format) sentences.push(`O formato de saída deve ser ${format}.`);
-  if (examples) sentences.push(`Utilize como referência: ${examples}.`);
-
-  const tone = getVal("tone");
-  const criteria = getVal("criteria");
-  if (tone) sentences.push(`O tom deve ser ${tone}.`);
-  if (criteria) sentences.push(`Os critérios de sucesso são: ${criteria}.`);
-
-  const decomposition = getVal("decomposition");
-  if (decomposition) sentences.push(`A abordagem deve considerar: ${decomposition}.`);
-
-  const clar = getVal("clarifications");
-  const verif = getVal("verification");
-  const alt = getVal("alternatives");
-  const extras = [clar, verif, alt].filter(Boolean);
-  if (extras.length) sentences.push(`Adicionalmente: ${extras.join(". ")}.`);
+  const instructionLines = INSTRUCTION_FIELDS.map((id) => getVal(id)).filter(Boolean);
+  if (instructionLines.length) {
+    detailLines.push("");
+    detailLines.push("Instruções adicionais:");
+    instructionLines.forEach((inst) => detailLines.push(`- ${inst}`));
+  }
 
   const sources = getVal("sources");
   const safety = getVal("safety");
-  if (sources) sentences.push(`Considere as fontes: ${sources}.`);
-  if (safety) sentences.push(`Respeite os requisitos de segurança e ética: ${safety}.`);
+  if (sources || safety) {
+    detailLines.push("");
+    if (sources) detailLines.push(`Fontes: ${sources}`);
+    if (safety) detailLines.push(`Segurança/ética: ${safety}`);
+  }
 
-  const detailsParagraphs = sentences.join("\n\n");
+  const detailsBlock = detailLines.join("\n");
 
   const lines = [];
   lines.push("Você é um assistente especializado em atender a solicitação abaixo.");
   lines.push("");
-  lines.push(`Solicitação original: ${initialPrompt}`);
+  lines.push("Solicitação original:");
+  lines.push(initialPrompt);
   lines.push("");
-  if (detailsParagraphs) {
+  if (detailsBlock) {
     lines.push("Detalhes adicionais:");
     lines.push("");
-    lines.push(detailsParagraphs);
+    lines.push(detailsBlock);
     lines.push("");
   }
   lines.push(

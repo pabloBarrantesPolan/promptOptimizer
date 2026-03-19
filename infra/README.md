@@ -1,5 +1,11 @@
 # Infraestrutura AWS - Prompt Optimizer
 
+## Template do prompt otimizado
+
+O template está em `src/App.jsx` (função `buildOptimizedPrompt`). Regras:
+- Só incluir campos que o usuário respondeu; respostas passadas verbatim; não variar por nível de conhecimento.
+- Estrutura: Solicitação original → Detalhes adicionais (Label: valor) → Instruções adicionais (quando Sim) → Fontes/Segurança → Instruções finais.
+
 ## Arquitetura
 
 - **ALB** (`prompt-optimizer-project`): Application Load Balancer internet-facing, expõe a aplicação na porta 80.
