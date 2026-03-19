@@ -173,6 +173,8 @@ Resources:
 
   AppDataVolume:
     Type: AWS::EC2::Volume
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       AvailabilityZone: !GetAtt AppInstance.AvailabilityZone
       Size: !Ref DataVolumeSize
