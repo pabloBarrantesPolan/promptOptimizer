@@ -196,6 +196,112 @@ a:hover {
   gap: 12px;
 }
 
+.tcle-screen {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 100vh;
+  padding: 24px 16px 48px;
+  box-sizing: border-box;
+}
+
+.tcle-card {
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  max-width: 720px;
+  width: 100%;
+  padding: 28px 32px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.tcle-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.35;
+}
+
+.tcle-subtitle {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #475569;
+  line-height: 1.45;
+}
+
+.tcle-body {
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
+  padding-right: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 16px 18px;
+  background: #f8fafc;
+}
+
+.tcle-section {
+  margin-bottom: 18px;
+}
+
+.tcle-section:last-child {
+  margin-bottom: 0;
+}
+
+.tcle-section h2 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.tcle-section p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: #334155;
+  white-space: pre-wrap;
+}
+
+.tcle-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: flex-end;
+  padding-top: 8px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.tcle-actions .btn-primary,
+.tcle-actions .btn-secondary {
+  padding: 12px 22px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+}
+
+.tcle-actions .btn-secondary {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.tcle-actions .btn-secondary:hover {
+  background: #e2e8f0;
+}
+
+.tcle-actions .btn-primary {
+  background: #2563eb;
+  color: #fff;
+}
+
+.tcle-actions .btn-primary:hover {
+  background: #1d4ed8;
+}
+
 .user-email {
   font-size: 13px;
   color: #4a5568;

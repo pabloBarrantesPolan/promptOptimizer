@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { apiFetch, getToken, setToken } from "./api.js";
 
 const QUESTIONS = [
@@ -186,6 +186,75 @@ const PROMPT_INSTRUCTIONS = {
 
 const NAO_PATTERNS = /^(n[ao]?|nope|nada)$/i;
 const SIM_PATTERNS = /^(sim|s|yes|y|ok|okay)$/i;
+
+const TCLE_STORAGE_PREFIX = "promptOptimizerTcle:";
+
+function isTcleStoredAccepted(userId) {
+  if (!userId) return true;
+  return localStorage.getItem(`${TCLE_STORAGE_PREFIX}${userId}`) === "accepted";
+}
+
+function storeTcleAccepted(userId) {
+  localStorage.setItem(`${TCLE_STORAGE_PREFIX}${userId}`, "accepted");
+}
+
+const TCLE_CONTENT = {
+  title: "TERMO DE CONSENTIMENTO LIVRE E ESCLARECIDO (TCLE)",
+  subtitle:
+    "Pesquisa: Aplicação de boas práticas em engenharia de prompts para otimização de uso de ferramentas de IA.",
+  sections: [
+    {
+      heading: "Convite para participação",
+      body:
+        "Você está sendo convidado(a) a participar desta pesquisa acadêmica. Antes de decidir se deseja participar, é importante compreender por que esta pesquisa está sendo realizada, como será sua participação, os possíveis benefícios, riscos e desconfortos.",
+    },
+    {
+      heading: "Justificativa, objetivos e procedimentos",
+      body:
+        "A pesquisa utiliza uma aplicação web na qual será inserido um prompt inicial. Em seguida, por meio de uma série de perguntas baseadas em boas práticas de engenharia de prompt, será gerado um prompt otimizado. O objetivo principal é comparar as respostas da IA generativa obtidas com o prompt inicial e com o prompt otimizado. Após essa comparação, será aplicado um formulário com questões sobre: familiaridade com ferramentas de IA, clareza, relevância, adequação e satisfação com as respostas obtidas.",
+    },
+    {
+      heading: "Forma de acompanhamento e assistência",
+      body:
+        "A qualquer momento, antes, durante e depois da pesquisa, você poderá solicitar esclarecimentos adicionais, recusar-se a participar ou desistir de participar. Em todos esses casos, você não será prejudicado(a), penalizado(a) ou responsabilizado(a) de qualquer forma. Em caso de dúvidas ou necessidade de esclarecimentos sobre a pesquisa, entre em contato com o pesquisador responsável: Pablo Barrantes Polan — Telefone: (17) 98824-4546 — E-mail: pablobp.cc@gmail.com.",
+    },
+    {
+      heading: "Riscos, benefícios e confidencialidade",
+      body:
+        "Os riscos esperados são mínimos e relacionados, principalmente, a eventual desconforto ao responder o formulário. Como benefício indireto, a pesquisa pode contribuir para o aprimoramento de boas práticas no uso de ferramentas de IA. As informações coletadas serão tratadas com confidencialidade, com uso para fins acadêmicos, respeitando a privacidade dos participantes.",
+    },
+    {
+      heading: "Consentimento individual para coleta de dados sobre uso da ferramenta",
+      body:
+        "Ao fazer uso desta aplicação web o(a) participante declara que recebeu explicações suficientes sobre a pesquisa, teve oportunidade de tirar dúvidas, compreendeu as informações apresentadas e concordou voluntariamente em participar.",
+    },
+  ],
+};
+
+const TcleScreen = ({ onAccept, onDecline }) => (
+  <div className="tcle-screen">
+    <div className="tcle-card">
+      <h1 className="tcle-title">{TCLE_CONTENT.title}</h1>
+      <p className="tcle-subtitle">{TCLE_CONTENT.subtitle}</p>
+      <div className="tcle-body">
+        {TCLE_CONTENT.sections.map((section) => (
+          <section key={section.heading} className="tcle-section">
+            <h2>{section.heading}</h2>
+            <p>{section.body}</p>
+          </section>
+        ))}
+      </div>
+      <div className="tcle-actions">
+        <button type="button" className="btn-secondary" onClick={onDecline}>
+          Recusar
+        </button>
+        <button type="button" className="btn-primary" onClick={onAccept}>
+          Aceitar
+        </button>
+      </div>
+    </div>
+  </div>
+);
 
 const formatPromptValue = (value, fieldId) => {
   const trimmed = String(value).trim();
@@ -377,6 +446,7 @@ const LoginForm = ({ onLogin, onRegister, error }) => {
 const App = () => {
   const [authEnabled, setAuthEnabled] = useState(null);
   const [user, setUser] = useState(null);
+  const [tcleAccepted, setTcleAccepted] = useState(true);
   const [authError, setAuthError] = useState("");
   const [messages, setMessages] = useState([
     { role: "assistant", content: initialAssistantMessage },
@@ -438,6 +508,14 @@ const App = () => {
       }
     })();
   }, []);
+
+  useLayoutEffect(() => {
+    if (!user || user.id === "anon") {
+      setTcleAccepted(true);
+      return;
+    }
+    setTcleAccepted(isTcleStoredAccepted(user.id));
+  }, [user]);
 
   const handleLogin = async (email, password) => {
     const res = await fetch("/api/auth/login", {
@@ -511,6 +589,20 @@ const App = () => {
             error={authError}
           />
         </div>
+      </div>
+    );
+  }
+
+  if (authEnabled && user && user.id !== "anon" && !tcleAccepted) {
+    return (
+      <div className="app">
+        <TcleScreen
+          onAccept={() => {
+            storeTcleAccepted(user.id);
+            setTcleAccepted(true);
+          }}
+          onDecline={handleLogout}
+        />
       </div>
     );
   }
